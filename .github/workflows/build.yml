@@ -1,80 +1,77 @@
-name: Build APK KivyMD (FIX FINAL STABLE)
+name: Build APK KivyMD (FINAL FIX)
 
 on:
-    push:
-        branches: ["main"]
-    workflow_dispatch:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
 
 jobs:
-    build:
-        runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-latest
 
-        steps:
-            # 1. Code
-            - name: Checkout code
-              uses: actions/checkout@v4
+    steps:
+      # 1. Code
+      - name: Checkout
+        uses: actions/checkout@v4
 
-            # 2. Python
-            - name: Setup Python
-              uses: actions/setup-python@v5
-              with:
-                  python-version: "3.10"
+      # 2. Python
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
 
-            # 3. Dependencies system
-            - name: Install system dependencies
-              run: |
-                  sudo apt update
-                  sudo apt install -y git zip unzip wget openjdk-17-jdk \
-                  python3-pip build-essential autoconf libtool pkg-config \
-                  zlib1g-dev libncurses5-dev libncursesw5-dev libffi-dev libssl-dev
+      # 3. System deps
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y git zip unzip wget openjdk-17-jdk \
+          python3-pip build-essential autoconf libtool pkg-config \
+          zlib1g-dev libncurses5-dev libncursesw5-dev libffi-dev libssl-dev
 
-            # 4. Buildozer
-            - name: Install Buildozer
-              run: |
-                  pip install --upgrade pip
-                  pip install buildozer cython
+      # 4. Buildozer
+      - name: Install Buildozer
+        run: |
+          pip install --upgrade pip
+          pip install buildozer cython
 
-            # 5. Android SDK FIX (NO 37 + LICENSE FIX)
-            - name: Setup Android SDK FIXED
-              run: |
-                  set -e
+      # 5. Android SDK FIX (REAL WORKING METHOD)
+      - name: Setup Android SDK (FIXED LICENSE)
+        run: |
+          set -e
 
-                  mkdir -p $HOME/.buildozer/android/platform
-                  cd $HOME/.buildozer/android/platform
+          mkdir -p $HOME/.buildozer/android/platform
+          cd $HOME/.buildozer/android/platform
 
-                  # Tools
-                  wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
-                  unzip commandlinetools-linux-9477386_latest.zip
+          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          unzip commandlinetools-linux-9477386_latest.zip
 
-                  mkdir -p android-sdk/cmdline-tools
-                  mv cmdline-tools android-sdk/cmdline-tools/latest
+          mkdir -p android-sdk/cmdline-tools
+          mv cmdline-tools android-sdk/cmdline-tools/latest
 
-                  export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
-                  export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin
+          export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
+          export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin
 
-                  # IMPORTANT: prevent auto picking 37
-                  sdkmanager --sdk_root=$ANDROID_SDK_ROOT --version || true
+          # 🔥 FORCE ACCEPT ALL LICENSES (IMPORTANT FIX)
+          yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses || true
 
-                  # ACCEPT LICENSES (REAL FIX)
-                  yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
+          # 🔥 STOP SDK FROM USING 37 (PIN VERSION)
+          sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
+            "platform-tools" \
+            "platforms;android-31" \
+            "build-tools;31.0.0"
 
-                  # INSTALL STABLE VERSIONS ONLY
-                  sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
-                    "platform-tools" \
-                    "platforms;android-31" \
-                    "build-tools;31.0.0"
+          # VERIFY AIDL EXISTS
+          echo "Checking build-tools..."
+          ls $ANDROID_SDK_ROOT/build-tools/31.0.0
 
-                  # VERIFY AIDL EXISTS
-                  ls $ANDROID_SDK_ROOT/build-tools/31.0.0
+      # 6. Build APK
+      - name: Build APK
+        run: |
+          buildozer -v android debug
 
-            # 6. Build APK
-            - name: Build APK
-              run: |
-                  buildozer -v android debug
-
-            # 7. Upload APK
-            - name: Upload APK
-              uses: actions/upload-artifact@v4
-              with:
-                  name: kivymd-apk
-                  path: bin/*.apk
+      # 7. Upload APK
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kivymd-apk
+          path: bin/*.apk
