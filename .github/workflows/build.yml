@@ -1,4 +1,4 @@
-name: Build APK (manual SDK)
+name: Build APK (manual SDK clean)
 
 on:
     push:
@@ -17,7 +17,10 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
 
-            - name: Install system deps
+            # =========================
+            # INSTALL SYSTEM DEPENDENCIES
+            # =========================
+            - name: System deps
               run: |
                   sudo apt update
                   sudo apt install -y git zip unzip openjdk-17-jdk \
@@ -25,33 +28,39 @@ jobs:
                     autoconf libtool pkg-config \
                     cmake libffi-dev libssl-dev
 
-            - name: Install Python deps
+            - name: Python deps
               run: |
                   pip install --upgrade pip
                   pip install buildozer cython==0.29.36
 
             # =========================
-            # ANDROID SDK INSTALLATION
+            # INSTALL ANDROID SDK (SEPARATE STEP)
             # =========================
             - name: Install Android SDK manually
               run: |
                   mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-
                   cd $ANDROID_SDK_ROOT
 
                   wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O sdk.zip
                   unzip sdk.zip
 
-                  mv cmdline-tools cmdline-tools/latest
+                  mkdir -p cmdline-tools/latest
+                  mv cmdline-tools/* cmdline-tools/latest/ 2>/dev/null || true
 
                   echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
                   echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
 
-            - name: Accept licenses (IMPORTANT)
+            # =========================
+            # ACCEPT LICENSES (CRITICAL FIX)
+            # =========================
+            - name: Accept SDK licenses
               run: |
                   yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses || true
 
-            - name: Install stable SDK packages
+            # =========================
+            # INSTALL FIXED VERSION (NO 37!)
+            # =========================
+            - name: Install stable Android packages
               run: |
                   sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
                     "platform-tools" \
@@ -59,18 +68,26 @@ jobs:
                     "build-tools;34.0.0"
 
             # =========================
-            # FORCE BUILD OZER TO USE EXISTING SDK
+            # VERIFY AIDL EXISTS
             # =========================
-            - name: Create buildozer.spec if missing
+            - name: Check build-tools
+              run: |
+                  ls $ANDROID_SDK_ROOT/build-tools/34.0.0 || true
+
+            # =========================
+            # FORCE BUILD OZER TO USE SDK
+            # =========================
+            - name: Init buildozer
               run: |
                   buildozer init || true
 
-            - name: Force Buildozer to use our SDK
+            - name: Force buildozer config
               run: |
-                  sed -i 's|# android.sdk_path =.*|android.sdk_path = '"$ANDROID_SDK_ROOT"'|' buildozer.spec || true
                   sed -i 's/android.api = .*/android.api = 33/' buildozer.spec || true
                   sed -i 's/android.minapi = .*/android.minapi = 21/' buildozer.spec || true
                   sed -i 's/android.build_tools_version = .*/android.build_tools_version = 34.0.0/' buildozer.spec || true
+
+                  echo "android.sdk_path = $ANDROID_SDK_ROOT" >> buildozer.spec
 
             # =========================
             # BUILD APK
@@ -78,3 +95,12 @@ jobs:
             - name: Build APK
               run: |
                   buildozer -v android debug
+
+            # =========================
+            # OUTPUT APK
+            # =========================
+            - name: Upload APK
+              uses: actions/upload-artifact@v4
+              with:
+                  name: apk
+                  path: bin/*.apk
