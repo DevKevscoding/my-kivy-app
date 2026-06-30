@@ -1,0 +1,32 @@
+name: Build APK KivyMD
+
+on:
+    push:
+        branches: ["main"]
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Install dependencies
+              run: |
+                  sudo apt update
+                  sudo apt install -y python3-pip git zip unzip openjdk-17-jdk
+                  pip3 install --upgrade pip
+                  pip3 install buildozer cython
+
+            - name: Show project files
+              run: ls -R
+
+            - name: Build APK
+              run: buildozer android debug
+
+            - name: Upload APK
+              uses: actions/upload-artifact@v4
+              with:
+                  name: kivymd-apk
+                  path: bin/*.apk
