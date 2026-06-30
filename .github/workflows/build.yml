@@ -1,69 +1,75 @@
-name: Build APK KivyMD (Buildozer)
+name: Build APK KivyMD (Stable Buildozer)
 
 on:
-    push:
-        branches: ["main"]
-    workflow_dispatch:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
 
 jobs:
-    build:
-        runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-latest
 
-        steps:
-            # 1. Récupérer le code
-            - name: Checkout code
-              uses: actions/checkout@v4
+    steps:
+      # 1. Checkout code
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-            # 2. Python
-            - name: Setup Python
-              uses: actions/setup-python@v5
-              with:
-                  python-version: 3.10
+      # 2. Setup Python
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
 
-            # 3. Dépendances système
-            - name: Install system dependencies
-              run: |
-                  sudo apt update
-                  sudo apt install -y git zip unzip wget openjdk-17-jdk \
-                  python3-pip build-essential autoconf libtool pkg-config \
-                  zlib1g-dev libncurses5-dev libncursesw5-dev libffi-dev libssl-dev
+      # 3. Install system dependencies
+      - name: Install system dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y git zip unzip wget openjdk-17-jdk \
+          python3-pip build-essential autoconf libtool pkg-config \
+          zlib1g-dev libncurses5-dev libncursesw5-dev libffi-dev libssl-dev
 
-            # 4. Installer Buildozer
-            - name: Install Buildozer
-              run: |
-                  pip install --upgrade pip
-                  pip install buildozer cython
+      # 4. Install Buildozer
+      - name: Install Buildozer
+        run: |
+          pip install --upgrade pip
+          pip install buildozer cython
 
-            # 5. Installer Android SDK (VERSION STABLE)
-            - name: Setup Android SDK (stable)
-              run: |
-                  mkdir -p $HOME/.buildozer/android/platform
-                  cd $HOME/.buildozer/android/platform
+      # 5. Setup Android SDK (FIX STABLE + AIDL FIX)
+      - name: Setup Android SDK
+        run: |
+          mkdir -p $HOME/.buildozer/android/platform
+          cd $HOME/.buildozer/android/platform
 
-                  wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
-                  unzip commandlinetools-linux-9477386_latest.zip
+          # Command line tools (stable version)
+          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          unzip commandlinetools-linux-9477386_latest.zip
 
-                  mkdir -p android-sdk/cmdline-tools
-                  mv cmdline-tools android-sdk/cmdline-tools/latest
+          mkdir -p android-sdk/cmdline-tools
+          mv cmdline-tools android-sdk/cmdline-tools/latest
 
-                  export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
-                  export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin
+          export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
+          export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin
 
-                  yes | sdkmanager --licenses
+          # Accept licenses (IMPORTANT FIX)
+          yes | sdkmanager --licenses || true
 
-                  sdkmanager \
-                    "platform-tools" \
-                    "platforms;android-31" \
-                    "build-tools;31.0.0"
+          # Install stable components ONLY (avoid build-tools 37)
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-31"
+          sdkmanager "build-tools;31.0.0"
 
-            # 6. Build APK
-            - name: Build APK with Buildozer
-              run: |
-                  buildozer -v android debug
+          # Verify AIDL exists
+          echo "Checking build-tools..."
+          ls $ANDROID_SDK_ROOT/build-tools/31.0.0 || true
 
-            # 7. Upload APK
-            - name: Upload APK artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: kivymd-apk
-                  path: bin/*.apk
+      # 6. Build APK
+      - name: Build APK with Buildozer
+        run: |
+          buildozer -v android debug
+
+      # 7. Upload APK
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kivymd-apk
+          path: bin/*.apk
