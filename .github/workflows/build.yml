@@ -1,106 +1,131 @@
-name: Build APK (manual SDK clean)
+name: Build APK (Clean Android SDK)
 
 on:
-    push:
-        branches: ["main"]
-    workflow_dispatch:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
-    build:
-        runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-latest
 
-        env:
-            ANDROID_SDK_ROOT: $HOME/android-sdk
-            ANDROID_HOME: $HOME/android-sdk
+    env:
+      ANDROID_SDK_ROOT: $HOME/android-sdk
+      ANDROID_HOME: $HOME/android-sdk
 
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
+    steps:
+      # =========================
+      # CHECKOUT
+      # =========================
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-            # =========================
-            # INSTALL SYSTEM DEPENDENCIES
-            # =========================
-            - name: System deps
-              run: |
-                  sudo apt update
-                  sudo apt install -y git zip unzip openjdk-17-jdk \
-                    python3-pip python3-setuptools \
-                    autoconf libtool pkg-config \
-                    cmake libffi-dev libssl-dev
+      # =========================
+      # SYSTEM DEPENDENCIES
+      # =========================
+      - name: Install system dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y git zip unzip openjdk-17-jdk \
+            python3-pip python3-setuptools \
+            autoconf libtool pkg-config \
+            cmake libffi-dev libssl-dev
 
-            - name: Python deps
-              run: |
-                  pip install --upgrade pip
-                  pip install buildozer cython==0.29.36
+      # =========================
+      # PYTHON DEPENDENCIES
+      # =========================
+      - name: Install Python tools
+        run: |
+          pip install --upgrade pip
+          pip install buildozer cython==0.29.36
 
-            # =========================
-            # INSTALL ANDROID SDK (SEPARATE STEP)
-            # =========================
-            - name: Install Android SDK manually
-              run: |
-                  mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-                  cd $ANDROID_SDK_ROOT
+      # =========================
+      # CLEAN BUILD OZER CACHE (IMPORTANT)
+      # =========================
+      - name: Remove Buildozer auto SDK
+        run: |
+          rm -rf ~/.buildozer/android || true
 
-                  wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O sdk.zip
-                  unzip sdk.zip
+      # =========================
+      # INSTALL ANDROID SDK MANUALLY
+      # =========================
+      - name: Install Android SDK (manual clean)
+        run: |
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          cd $ANDROID_SDK_ROOT
 
-                  mkdir -p cmdline-tools/latest
-                  mv cmdline-tools/* cmdline-tools/latest/ 2>/dev/null || true
+          wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O sdk.zip
+          unzip sdk.zip
 
-                  echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
-                  echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+          mkdir -p cmdline-tools/latest
+          mv cmdline-tools/* cmdline-tools/latest/ 2>/dev/null || true
 
-            # =========================
-            # ACCEPT LICENSES (CRITICAL FIX)
-            # =========================
-            - name: Accept SDK licenses
-              run: |
-                  yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses || true
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
 
-            # =========================
-            # INSTALL FIXED VERSION (NO 37!)
-            # =========================
-            - name: Install stable Android packages
-              run: |
-                  sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
-                    "platform-tools" \
-                    "platforms;android-33" \
-                    "build-tools;34.0.0"
+      # =========================
+      # ACCEPT LICENSES (FIX ERROR)
+      # =========================
+      - name: Accept Android licenses
+        run: |
+          yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses || true
 
-            # =========================
-            # VERIFY AIDL EXISTS
-            # =========================
-            - name: Check build-tools
-              run: |
-                  ls $ANDROID_SDK_ROOT/build-tools/34.0.0 || true
+      # =========================
+      # INSTALL FIXED SDK VERSION
+      # =========================
+      - name: Install stable Android packages
+        run: |
+          sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
+            "platform-tools" \
+            "platforms;android-33" \
+            "build-tools;34.0.0"
 
-            # =========================
-            # FORCE BUILD OZER TO USE SDK
-            # =========================
-            - name: Init buildozer
-              run: |
-                  buildozer init || true
+      # =========================
+      # VERIFY AIDL EXISTS
+      # =========================
+      - name: Verify build-tools
+        run: |
+          ls $ANDROID_SDK_ROOT/build-tools/34.0.0 || true
 
-            - name: Force buildozer config
-              run: |
-                  sed -i 's/android.api = .*/android.api = 33/' buildozer.spec || true
-                  sed -i 's/android.minapi = .*/android.minapi = 21/' buildozer.spec || true
-                  sed -i 's/android.build_tools_version = .*/android.build_tools_version = 34.0.0/' buildozer.spec || true
+      # =========================
+      # BUILD OZER CONFIG
+      # =========================
+      - name: Init Buildozer
+        run: |
+          buildozer init || true
 
-                  echo "android.sdk_path = $ANDROID_SDK_ROOT" >> buildozer.spec
+      # =========================
+      # FORCE BUILD OZER TO USE MANUAL SDK
+      # =========================
+      - name: Force Buildozer config
+        run: |
+          sed -i 's/android.api = .*/android.api = 33/' buildozer.spec || true
+          sed -i 's/android.minapi = .*/android.minapi = 21/' buildozer.spec || true
+          sed -i 's/android.build_tools_version = .*/android.build_tools_version = 34.0.0/' buildozer.spec || true
 
-            # =========================
-            # BUILD APK
-            # =========================
-            - name: Build APK
-              run: |
-                  buildozer -v android debug
+          echo "android.sdk_path = $ANDROID_SDK_ROOT" >> buildozer.spec
+          echo "android.skip_update = True" >> buildozer.spec
 
-            # =========================
-            # OUTPUT APK
-            # =========================
-            - name: Upload APK
-              uses: actions/upload-artifact@v4
-              with:
-                  name: apk
-                  path: bin/*.apk
+      # =========================
+      # FINAL SAFETY CHECK
+      # =========================
+      - name: Check SDK paths
+        run: |
+          echo $ANDROID_SDK_ROOT
+          ls $ANDROID_SDK_ROOT/build-tools/34.0.0
+
+      # =========================
+      # BUILD APK
+      # =========================
+      - name: Build APK
+        run: |
+          buildozer -v android debug
+
+      # =========================
+      # UPLOAD APK
+      # =========================
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: bin/*.apk
